@@ -1,5 +1,11 @@
 {
     "chat": {
+        "group":{
+        },
+        "individual":{        
+        },
+        "channel":{
+        }
     },
     "individuals": {
     },

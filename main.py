@@ -30,7 +30,7 @@ async def say(ctx: SlashContext, text: str):
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:
-        main_channel = bot.get_channel(data["chat"]["main"]["channel"])
+        main_channel = bot.get_channel(data["chat"]["channel"]["main"]["id"])
         embed = interactions.Embed(
         description=text,
         color=0x7CB7D3)
@@ -41,6 +41,51 @@ async def say(ctx: SlashContext, text: str):
                 await private_channel.send(embeds=embed)
         await main_channel.send(embeds=embed)
         await ctx.send(embeds=embed)
+
+@slash_command(name="dm", 
+               description="Say something to someone or a group!")
+@slash_option(
+    name="text",
+    description="Type some text for it to be said to your chosen dm!",
+    required=True,
+    opt_type=OptionType.STRING
+)
+@slash_option(
+    name="dm",
+    description="Indicate here who you would like to send this message to!",
+    required=True,
+    opt_type=OptionType.STRING
+)
+async def dm(ctx: SlashContext, text: str, dm: str):
+    data = json_methods.open_file()
+    if not str(ctx.author.id) in data["individuals"]:
+        embed = interactions.Embed(
+        description="You do not have a user profile! Use /create_profile to make one!",
+        color=0x7CB7D3)
+        await ctx.send(embeds=embed)
+    else:
+        embed = interactions.Embed(
+        description=text,
+        color=0x7CB7D3)
+        if dm.lower() in data["chat"]["individual"]:
+            embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"] + " DM", icon_url=data["individuals"][str(ctx.author.id)]["image"])
+            for person in data["profiles"]:
+                if person.lower() == dm.lower() and not person.lower() == data["individuals"][str(ctx.author.id)]["name"]:
+                    dm_channel = bot.get_channel(data["profiles"][person]["dm"])
+                    await dm_channel.send(embeds=embed)
+            await ctx.send(embeds=embed)
+        elif dm.lower() in data["chat"]["group"]:
+            embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"] + " (" + dm + ")", icon_url=data["individuals"][str(ctx.author.id)]["image"])
+            for person in data["profiles"]:
+                if person.lower() in data["chat"]["group"][dm.lower()]["members"] and not person.lower() == data["individuals"][str(ctx.author.id)]["name"]:
+                    dm_channel = bot.get_channel(data["profiles"][person]["dm"])
+                    await dm_channel.send(embeds=embed)
+            await ctx.send(embeds=embed)
+        else:
+            embed = interactions.Embed(
+            description="This chat does not exist!",
+            color=0x7CB7D3)
+            await ctx.send(embeds=embed)
 
 
 @slash_command(name="create_profile", 
@@ -59,7 +104,7 @@ async def say(ctx: SlashContext, text: str):
 )
 async def profile(ctx: SlashContext, name: str, avi):
     data = json_methods.open_file()
-    if not str(ctx.author.id) in data["individuals"] and not name in data["profiles"]:
+    if not str(ctx.author.id) in data["individuals"] and not name.lower() in data["profiles"] and not name.lower() in data["chat"]["group"]:
         data["individuals"][ctx.author.id] = {
             "name": name,
             "image": avi.url
@@ -68,21 +113,28 @@ async def profile(ctx: SlashContext, name: str, avi):
         po.add_denies(interactions.Permissions.VIEW_CHANNEL)
         channel = await ctx.guild.create_channel(channel_type=0, name=f"{name}_hub", permission_overwrites=po)
         dm_channel = await ctx.guild.create_channel(channel_type=0, name=f"{name}_DM", permission_overwrites=po)
-        data["profiles"][name] = {
+        data["profiles"][name.lower()] = {
             "id": ctx.author.id,
             "hub": channel.id,
             "dm": dm_channel.id
         }
+        data["chat"]["individual"][name.lower()] = {
+            "dm": dm_channel.id
+        }
         json_methods.update_file(data)
         await ctx.send("Done!")
-    else:  
-        if str(ctx.author.id) in data["individuals"]:
+    else:
+        if str(ctx.author.id) in data["individuals"]:  
             embed = interactions.Embed(
             description="You already have a user profile!",
             color=0x7CB7D3)
-        else:
+        elif name.lower() in data["profiles"]:
             embed = interactions.Embed(
             description="This name is already taken! Please choose another name.",
+            color=0x7CB7D3)
+        else:
+            embed = interactions.Embed(
+            description="This name is already the name of a group chat! Please choose another name",
             color=0x7CB7D3)
         await ctx.send(embeds=embed)
 
@@ -102,9 +154,14 @@ async def name_change(ctx: SlashContext, name: str):
         description="You do not have a user profile! Use /create_profile to make one!",
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
-    elif name in data["profiles"]:
+    elif name.lower() in data["profiles"]:
         embed = interactions.Embed(
         description="This name is already taken! Please choose another name.",
+        color=0x7CB7D3)
+        await ctx.send(embeds=embed)
+    elif name.lower() in data["chat"]["group"]:
+        embed = interactions.Embed(
+        description="This name is already the name of a group chat! Please choose another name.",
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:  
@@ -143,37 +200,75 @@ async def image_change(ctx: SlashContext, avi):
 )
 async def channel_assign(ctx: SlashContext, channel_name: str):
     data = json_methods.open_file()
-    if channel_name in data["chat"]:
+    if channel_name.lower() in data["chat"]["channel"]:
         embed = interactions.Embed(
         description="This channel has already been assigned!",
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:  
-        data["chat"][channel_name] = {
-            "channel":ctx.channel.id,
+        data["chat"]["channel"][channel_name.lower()] = {
+            "id": ctx.channel.id,
             }
         json_methods.update_file(data)
         await ctx.send("Done!")
 
-@slash_command(name="assign_channel", 
-               description="Assign this channel to speak to be able to speak in!")
+
+@slash_command(name="chat_creation", 
+               description="Create a new group chat with other people!")
 @slash_option(
     name="channel_name",
-    description="This is the name you will give your channel when calling it!",
+    description="This is the name of the group.",
     required=True,
     opt_type=OptionType.STRING
 )
-async def channel_assign(ctx: SlashContext, name: str):
+async def group_creation(ctx: SlashContext, channel_name: str):
     data = json_methods.open_file()
-    if name in data["chat"]:
+    if channel_name.lower() in data["chat"]["group"]:
         embed = interactions.Embed(
-        description="This channel has already been assigned!",
+        description="This group name has already been assigned!",
+        color=0x7CB7D3)
+        await ctx.send(embeds=embed)
+    elif channel_name.lower() in data["profiles"]:
+        embed = interactions.Embed(
+        description="This is already somebodys name! Please do not use it.",
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:  
-        data["players"]["chat"][name] = {
-            "channel":ctx.channel.id,
+        data["chat"]["group"][channel_name.lower()] = {
+            "members": [data["individuals"][str(ctx.author.id)]["name"]]
             }
+        json_methods.update_file(data)
+        await ctx.send("Done!")
+    
+
+@slash_command(name="chat_add_members", 
+               description="Add a player to your chat!")
+@slash_option(
+    name="channel_name",
+    description="This is the name of the group the person will be added to.",
+    required=True,
+    opt_type=OptionType.STRING
+)
+@slash_option(
+    name="person_name",
+    description="This is the name of the person who will be added to the group.",
+    required=True,
+    opt_type=OptionType.STRING
+)
+async def group_adding(ctx: SlashContext, channel_name: str, person_name: str):
+    data = json_methods.open_file()
+    if person_name.lower() in data["chat"]["group"][channel_name.lower()]["members"]:
+        embed = interactions.Embed(
+        description="This profile is already in the group!",
+        color=0x7CB7D3)
+        await ctx.send(embeds=embed)
+    elif not person_name.lower() in data["profiles"]:
+        embed = interactions.Embed(
+        description="This profile does not exist!",
+        color=0x7CB7D3)
+        await ctx.send(embeds=embed)
+    else:  
+        data["chat"]["group"][channel_name.lower()]["members"].append(person_name.lower())
         json_methods.update_file(data)
         await ctx.send("Done!")
 
