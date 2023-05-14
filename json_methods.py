@@ -12,12 +12,15 @@ def open_file(guild):
             },
             "individuals": {},
             "profiles": {},
+            "settings": {
+                "journal": False
+            },
         }
-        update_file(full_data, guild, data)
+        return full_data, data
     return data[str(guild)], data
 
 def update_file(data, guild, full_data):
     file = open("data.json", "w")
-    full_data[guild] = data
+    full_data[str(guild)] = data
     json.dump(full_data, file, indent=4)
     file.close()

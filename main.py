@@ -23,7 +23,8 @@ async def on_startup():
     opt_type=OptionType.STRING
 )
 async def say(ctx: SlashContext, text: str):
-    data = json_methods.open_file(int(ctx.guild_id))
+    data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
     data = data[0]
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
@@ -31,6 +32,18 @@ async def say(ctx: SlashContext, text: str):
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:
+        if not "main" in data["chat"]["channel"]:
+            po = interactions.PermissionOverwrite(id=ctx.guild.id, type=0)
+            po.add_denies(interactions.Permissions.SEND_MESSAGES)
+            category = await ctx.guild.create_channel(channel_type=4, name="global channels")
+            data["chat"]["channel"]["global_chats"] = {
+                "id": category.id
+            }
+            channel = await ctx.guild.create_channel(channel_type=0, name="main_chat", permission_overwrites=po, category=data["chat"]["channel"]["global_chats"]["id"])
+            data["chat"]["channel"]["main"] = {
+                "id": channel.id
+            }
+            json_methods.update_file(data, ctx.guild_id, full_data)
         main_channel = bot.get_channel(data["chat"]["channel"]["main"]["id"])
         embed = interactions.Embed(
         description=text,
@@ -58,7 +71,7 @@ async def say(ctx: SlashContext, text: str):
     opt_type=OptionType.STRING
 )
 async def dm(ctx: SlashContext, text: str, dm: str):
-    data = json_methods.open_file(int(ctx.guild_id))
+    data = json_methods.open_file(ctx.guild_id)
     data = data[0]
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
@@ -105,7 +118,7 @@ async def dm(ctx: SlashContext, text: str, dm: str):
     opt_type=OptionType.ATTACHMENT
 )
 async def profile(ctx: SlashContext, name: str, avi):
-    data = json_methods.open_file(int(ctx.guild_id))
+    data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
     if not str(ctx.author.id) in data["individuals"] and not name.lower() in data["profiles"] and not name.lower() in data["chat"]["group"]:
@@ -125,12 +138,16 @@ async def profile(ctx: SlashContext, name: str, avi):
         data["profiles"][name.lower()] = {
             "id": ctx.author.id,
             "hub": channel.id,
-            "dm": dm_channel.id
+            "dm": dm_channel.id,
+            "journal": None
         }
+        if data["settings"]["journal"]:
+            journal_channel = await ctx.guild.create_channel(channel_type=0, name=f"{name}_journal", permission_overwrites=po, category=data["chat"]["channel"]["categories"]["id"])
+            data["profiles"][name.lower()]["journal"] = journal_channel.id
         data["chat"]["individual"][name.lower()] = {
             "dm": dm_channel.id
         }
-        json_methods.update_file(data, int(ctx.guild_id), full_data)
+        json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Done!")
     else:
         if str(ctx.author.id) in data["individuals"]:  
@@ -157,7 +174,7 @@ async def profile(ctx: SlashContext, name: str, avi):
     opt_type=OptionType.STRING
 )
 async def name_change(ctx: SlashContext, name: str):
-    data = json_methods.open_file(int(ctx.guild_id))
+    data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
     if not str(ctx.author.id) in data["individuals"]:
@@ -177,7 +194,7 @@ async def name_change(ctx: SlashContext, name: str):
         await ctx.send(embeds=embed)
     else:  
         data["individuals"][str(ctx.author.id)]["name"] = name
-        json_methods.update_file(data, int(ctx.guild_id), full_data)
+        json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Done!")
 
 
@@ -190,7 +207,7 @@ async def name_change(ctx: SlashContext, name: str):
     opt_type=OptionType.ATTACHMENT
 )
 async def image_change(ctx: SlashContext, avi):
-    data = json_methods.open_file(int(ctx.guild_id))
+    data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
     if not str(ctx.author.id) in data["individuals"]:
@@ -212,7 +229,7 @@ async def image_change(ctx: SlashContext, avi):
     opt_type=OptionType.STRING
 )
 async def channel_assign(ctx: SlashContext, channel_name: str):
-    data = json_methods.open_file(int(ctx.guild_id))
+    data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
     if channel_name.lower() in data["chat"]["channel"]:
@@ -224,7 +241,7 @@ async def channel_assign(ctx: SlashContext, channel_name: str):
         data["chat"]["channel"][channel_name.lower()] = {
             "id": ctx.channel.id,
             }
-        json_methods.update_file(data, int(ctx.guild_id), full_data)
+        json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Done!")
 
 
@@ -237,7 +254,7 @@ async def channel_assign(ctx: SlashContext, channel_name: str):
     opt_type=OptionType.STRING
 )
 async def group_creation(ctx: SlashContext, channel_name: str):
-    data = json_methods.open_file(int(ctx.guild_id))
+    data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
     if channel_name.lower() in data["chat"]["group"]:
@@ -254,7 +271,7 @@ async def group_creation(ctx: SlashContext, channel_name: str):
         data["chat"]["group"][channel_name.lower()] = {
             "members": [data["individuals"][str(ctx.author.id)]["name"]]
             }
-        json_methods.update_file(data, int(ctx.guild_id), full_data)
+        json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Done!")
     
 
@@ -273,7 +290,7 @@ async def group_creation(ctx: SlashContext, channel_name: str):
     opt_type=OptionType.STRING
 )
 async def group_adding(ctx: SlashContext, channel_name: str, person_name: str):
-    data = json_methods.open_file(int(ctx.guild_id))
+    data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
     if person_name.lower() in data["chat"]["group"][channel_name.lower()]["members"]:
@@ -288,7 +305,32 @@ async def group_adding(ctx: SlashContext, channel_name: str, person_name: str):
         await ctx.send(embeds=embed)
     else:  
         data["chat"]["group"][channel_name.lower()]["members"].append(person_name.lower())
-        json_methods.update_file(data, int(ctx.guild_id), full_data)
+        json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Done!")
+
+@slash_command(name="toggle_journal", 
+               description="Toggle your preference for the journal setting!")
+@slash_option(
+    name="toggle",
+    description="Choose whether you want to turn it on or off!",
+    required=True,
+    opt_type=OptionType.BOOLEAN
+)
+async def toggle_journal(ctx: SlashContext, toggle: bool):
+    data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
+    data = data[0]
+    if toggle:
+        data["settings"]["journal"] = True
+        for person in data["profiles"]:
+            po = interactions.PermissionOverwrite(id=ctx.guild.id, type=0)
+            po.add_denies(interactions.Permissions.VIEW_CHANNEL)
+            journal_channel = await ctx.guild.create_channel(channel_type=0, name=f"{person}_journal", permission_overwrites=po, category=data["chat"]["channel"]["categories"]["id"])
+            data["profiles"][person.lower()]["journal"] = journal_channel.id
+            
+    else:
+        data["settings"]["journal"] = False
+    json_methods.update_file(data, ctx.guild_id, full_data)
+    await ctx.send("Your journal settings have been updated!")
 
 bot.start(token)
