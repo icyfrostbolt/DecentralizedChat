@@ -14,7 +14,7 @@ async def on_startup():
     print("Bot is ready!")
 
 
-@slash_command(name="speak", 
+@slash_command(name="say", 
                description="Say something out loud.")
 @slash_option(
     name="text",
@@ -28,7 +28,13 @@ async def on_startup():
     required=False,
     opt_type=OptionType.ATTACHMENT
 )
-async def say(ctx: SlashContext, text: str, image=None):
+@slash_option(
+    name="chat",
+    description="What public chat do you want to send your message in? (Default is the main channel)",
+    required=False,
+    opt_type=OptionType.ATTACHMENT
+)
+async def say(ctx: SlashContext, text: str, image=None, chat="main"):
     data = json_methods.open_file(ctx.guild_id)
     data = data[0]
     if not str(ctx.author.id) in data["individuals"]:
@@ -37,7 +43,7 @@ async def say(ctx: SlashContext, text: str, image=None):
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:
-        main_channel = bot.get_channel(data["chat"]["channel"]["main"]["id"])
+        send_channel = bot.get_channel(data["chat"]["channel"][chat]["id"])
         embed = interactions.Embed(
         description=text,
         color=Color.from_hex(data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["color"]))
@@ -48,7 +54,7 @@ async def say(ctx: SlashContext, text: str, image=None):
             if not data["profiles"][person]["id"] == ctx.author.id:
                 private_channel = bot.get_channel(data["profiles"][person]["hub"])
                 await private_channel.send(embeds=embed)
-        await main_channel.send(embeds=embed)
+        await send_channel.send(embeds=embed)
         await ctx.send(embeds=embed)
 
 @slash_command(name="dm", 
@@ -165,7 +171,7 @@ async def profile(ctx: SlashContext, name: str, avi):
             "dm": dm_channel.id
         }
         json_methods.update_file(data, ctx.guild_id, full_data)
-        await ctx.send("Done!")
+        await ctx.send("Your profile has been created!")
     else:
         if str(ctx.author.id) in data["individuals"]:  
             embed = interactions.Embed(
@@ -211,8 +217,13 @@ async def name_change(ctx: SlashContext, name: str):
         await ctx.send(embeds=embed)
     else:  
         data["individuals"][str(ctx.author.id)]["name"] = name
+        data["individuals"][str(ctx.author.id)]["name"] = name
+        data["chat"]["individual"][name] = data["chat"]["individual"][str(ctx.author.id)]
+        del data["chat"]["individual"][str(ctx.author.id)]
+        data["profiles"][name] = data["profiles"][str(ctx.author.id)]
+        del data["profiles"][str(ctx.author.id)]
         json_methods.update_file(data, ctx.guild_id, full_data)
-        await ctx.send("Done!")
+        await ctx.send("Your name has been changed!")
 
 
 @slash_command(name="change_avatar", 
@@ -235,9 +246,9 @@ async def image_change(ctx: SlashContext, avi):
     else:  
         data["individuals"][str(ctx.author.id)]["image"] = avi.url
         json_methods.update_file(data, int(ctx.guild_id), full_data)
-        await ctx.send("Done!")
+        await ctx.send("Your profiles picture has been changed!")
 
-@slash_command(name="assign_channel", 
+@slash_command(name="channel_assign", 
                description="Assign this channel to speak to be able to speak in!")
 @slash_default_member_permission(interactions.Permissions.ADMINISTRATOR)
 @slash_option(
@@ -260,9 +271,9 @@ async def channel_assign(ctx: SlashContext, channel_name: str):
             "id": ctx.channel.id,
             }
         json_methods.update_file(data, ctx.guild_id, full_data)
-        await ctx.send("Done!")
+        await ctx.send("This channel has been assigned as a public communication channel!")
 
-@slash_command(name="create_channel", 
+@slash_command(name="channel_create", 
                description="Assign this channel to speak to be able to speak in!")
 @slash_default_member_permission(interactions.Permissions.ADMINISTRATOR)
 @slash_option(
@@ -293,7 +304,7 @@ async def channel_create(ctx: SlashContext, channel_name: str):
             "id": channel.id,
             }
         json_methods.update_file(data, ctx.guild_id, full_data)
-        await ctx.send("Done!")
+        await ctx.send("A channel has been created!")
 
 
 @slash_command(name="group_creation", 
@@ -332,7 +343,7 @@ async def group_creation(ctx: SlashContext, group_name: str, group_picture=None)
         if group_picture:
             data["chat"]["group"][group_name.lower()]["image"] = group_picture.url
         json_methods.update_file(data, ctx.guild_id, full_data)
-        await ctx.send("Done!")
+        await ctx.send("Your group has been created!")
     
 
 @slash_command(name="group_add_members", 
@@ -366,7 +377,7 @@ async def group_adding(ctx: SlashContext, channel_name: str, person_name: str):
     else:  
         data["chat"]["group"][channel_name.lower()]["members"].append(person_name.lower())
         json_methods.update_file(data, ctx.guild_id, full_data)
-        await ctx.send("Done!")
+        await ctx.send("This member has been added to your group!")
 
 @slash_command(name="toggle_journal", 
                description="Toggle your preference for the journal setting!")
@@ -438,8 +449,12 @@ async def admin_name_change(ctx: SlashContext, name: str, person: str):
         await ctx.send(embeds=embed)
     else:  
         data["individuals"][person]["name"] = name
+        data["chat"]["individual"][name] = data["chat"]["individual"][person]
+        del data["chat"]["individual"][person]
+        data["profiles"][name] = data["profiles"][person]
+        del data["profiles"][person]
         json_methods.update_file(data, ctx.guild_id, full_data)
-        await ctx.send("Done!") 
+        await ctx.send("This individuals profile name has been changed!") 
 
 
 @slash_command(name="admin_change_avatar", 
@@ -469,7 +484,29 @@ async def admin_image_change(ctx: SlashContext, avi, person: str):
     else:  
         data["individuals"][person]["image"] = avi
         json_methods.update_file(data, int(ctx.guild_id), full_data)
-        await ctx.send("Done!")
+        await ctx.send("This individuals profile image has been changed!")
+
+@slash_command(name="change_color", 
+               description="Change your color!")
+@slash_default_member_permission(interactions.Permissions.ADMINISTRATOR)
+@slash_option(
+    name="hex_code",
+    description="Upload a hex code for the color you want!",
+    required=True,
+    opt_type=OptionType.STRING
+)
+async def color_change(ctx: SlashContext, hex_code):
+    data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
+    data = data[0]
+    try:
+        color = Color.from_hex(hex_code)
+    except:
+        await ctx.send("This is not a valid hex code. Please try again.")
+    else:
+        data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["color"] = hex_code
+        json_methods.update_file(data, int(ctx.guild_id), full_data)
+        await ctx.send("Your color has been changed!")
 
 @slash_command(name="help", 
                description="Get help!")
