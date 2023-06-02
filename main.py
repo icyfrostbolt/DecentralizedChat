@@ -32,10 +32,11 @@ async def on_startup():
     name="chat",
     description="What public chat do you want to send your message in? (Default is the main channel)",
     required=False,
-    opt_type=OptionType.ATTACHMENT
+    opt_type=OptionType.STRING
 )
 async def say(ctx: SlashContext, text: str, image=None, chat="main"):
     data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
     data = data[0]
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
@@ -51,9 +52,16 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main"):
         if image:
             embed.set_image(image.url)
         for person in data["profiles"]:
+            private_channel = bot.get_channel(data["profiles"][person]["hub"])
+            if not chat in data["profiles"][person]["threads"]:
+                new_thread = await private_channel.create_thread(name=chat, auto_archive_duration=10080)
+                if data["profiles"][person]["id"] == ctx.author.id:
+                    await new_thread.send(embeds=embed)
+                data["profiles"][person]["threads"][chat] = new_thread.id
+                json_methods.update_file(data, ctx.guild_id, full_data)
             if not data["profiles"][person]["id"] == ctx.author.id:
-                private_channel = bot.get_channel(data["profiles"][person]["hub"])
-                await private_channel.send(embeds=embed)
+                thread = bot.get_channel(data["profiles"][person]["threads"][chat])
+                await thread.send(embeds=embed)
         await send_channel.send(embeds=embed)
         await ctx.send(embeds=embed)
 
@@ -73,6 +81,7 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main"):
 )
 async def dm(ctx: SlashContext, text: str, dm: str):
     data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
     data = data[0]
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
@@ -84,23 +93,47 @@ async def dm(ctx: SlashContext, text: str, dm: str):
         description=text,
         color=Color.from_hex(data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["color"]))
         if dm.lower() in data["chat"]["individual"]:
-            embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"] + " (DM)", icon_url=data["individuals"][str(ctx.author.id)]["image"])
+            embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"], icon_url=data["individuals"][str(ctx.author.id)]["image"])
+            if not dm.lower() in data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"]:
+                self_channel = bot.get_channel(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["dm"])
+                self_thread = await self_channel.create_thread(name=dm, auto_archive_duration=10080)
+                data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()] = self_thread.id
+                json_methods.update_file(data, ctx.guild_id, full_data)
+                thread = bot.get_channel(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()])
+                await thread.send(embeds=embed)
             for person in data["profiles"]:
                 if person.lower() == dm.lower() and not person.lower() == data["individuals"][str(ctx.author.id)]["name"]:
                     dm_channel = bot.get_channel(data["profiles"][person]["dm"])
-                    await dm_channel.send(embeds=embed)
+                    if not dm.lower() in data["profiles"][person]["threads"]:
+                        new_thread = await dm_channel.create_thread(name=data["individuals"][str(ctx.author.id)]["name"], auto_archive_duration=10080)
+                        data["profiles"][person]["threads"][dm.lower()] = new_thread.id
+                        json_methods.update_file(data, ctx.guild_id, full_data)
+                    thread = bot.get_channel(data["profiles"][person]["threads"][dm.lower()])
+                    await thread.send(embeds=embed)
             await ctx.send(embeds=embed)
         elif dm.lower() in data["chat"]["group"]:
-            if not data["individuals"][ctx.author.id]["name"] in data["chat"]["group"][dm.lower()]["members"]:
+            if not data["individuals"][str(ctx.author.id)]["name"] in data["chat"]["group"][dm.lower()]["members"]:
                 await ctx.send("You're not in this group!")
                 return
             embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"] + " (" + dm + ")", icon_url=data["individuals"][str(ctx.author.id)]["image"])
             if data["chat"]["group"][dm.lower()]["image"]:
                 embed.set_thumbnail(data["chat"]["group"][dm.lower()]["image"])
+            if not dm.lower() in data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"]:
+                self_channel = bot.get_channel(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["dm"])
+                self_thread = await self_channel.create_thread(name=dm, auto_archive_duration=10080)
+                data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()] = self_thread.id
+                json_methods.update_file(data, ctx.guild_id, full_data)
+                thread = bot.get_channel(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()])
+                await thread.send(embeds=embed)
             for person in data["profiles"]:
                 if person.lower() in data["chat"]["group"][dm.lower()]["members"] and not person.lower() == data["individuals"][str(ctx.author.id)]["name"]:
-                    dm_channel = bot.get_channel(data["profiles"][person]["dm"])
-                    await dm_channel.send(embeds=embed)
+                    if not dm.lower() in data["profiles"][person]["threads"]:
+                        dm_channel = bot.get_channel(data["profiles"][person]["dm"])
+                        new_thread = await dm_channel.create_thread(name=dm, auto_archive_duration=10080)
+                        data["profiles"][person]["threads"][dm.lower()] = new_thread.id
+                        json_methods.update_file(data, ctx.guild_id, full_data)
+                    thread = bot.get_channel(data["profiles"][person]["threads"][dm.lower()])
+                    await thread.send(embeds=embed)
             await ctx.send(embeds=embed)
         else:
             embed = interactions.Embed(
@@ -162,6 +195,7 @@ async def profile(ctx: SlashContext, name: str, avi):
             "color": random.choice(list(values.values())),
             "hub": channel.id,
             "dm": dm_channel.id,
+            "threads": {},
             "journal": None
         }
         if data["settings"]["journal"]:
@@ -216,7 +250,6 @@ async def name_change(ctx: SlashContext, name: str):
         color=Color.from_hex(data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["color"]))
         await ctx.send(embeds=embed)
     else:  
-        data["individuals"][str(ctx.author.id)]["name"] = name
         data["individuals"][str(ctx.author.id)]["name"] = name
         data["chat"]["individual"][name] = data["chat"]["individual"][str(ctx.author.id)]
         del data["chat"]["individual"][str(ctx.author.id)]
@@ -273,7 +306,7 @@ async def channel_assign(ctx: SlashContext, channel_name: str):
         json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("This channel has been assigned as a public communication channel!")
 
-@slash_command(name="channel_create", 
+@slash_command(name="create_channel", 
                description="Assign this channel to speak to be able to speak in!")
 @slash_default_member_permission(interactions.Permissions.ADMINISTRATOR)
 @slash_option(
@@ -523,5 +556,5 @@ async def help_menu(ctx: SlashContext, menu="main"):
     description=values[menu.lower()],
     color=0x7CB7D3)
     await ctx.send(embeds=embed)
-    
+
 bot.start(token)
