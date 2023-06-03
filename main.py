@@ -13,8 +13,7 @@ bot = interactions.Client()
 async def on_startup():
     print("Bot is ready!")
 
-
-@slash_command(name="say", 
+@slash_command(name="s", 
                description="Say something out loud.")
 @slash_option(
     name="text",
@@ -34,7 +33,13 @@ async def on_startup():
     required=False,
     opt_type=OptionType.STRING
 )
-async def say(ctx: SlashContext, text: str, image=None, chat="main"):
+@slash_option(
+    name="ping",
+    description="Who would you like to ping with this message?",
+    required=False,
+    opt_type=OptionType.STRING
+)
+async def say(ctx: SlashContext, text: str, image=None, chat="main", ping=None):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
@@ -44,6 +49,8 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main"):
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:
+        if ping:
+            text = f"{text}\n\n@{ping}"
         send_channel = bot.get_channel(data["chat"]["channel"][chat]["id"])
         embed = interactions.Embed(
         description=text,
@@ -61,11 +68,13 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main"):
                 json_methods.update_file(data, ctx.guild_id, full_data)
             if not data["profiles"][person]["id"] == ctx.author.id:
                 thread = bot.get_channel(data["profiles"][person]["threads"][chat])
-                await thread.send(embeds=embed)
+                sent_thread = await thread.send(embeds=embed)
+                if ping and (ping == person or ping == "everyone"):
+                    await sent_thread.reply("<@" + str(data["profiles"][person]["id"]) + ">")
         await send_channel.send(embeds=embed)
         await ctx.send(embeds=embed)
 
-@slash_command(name="dm", 
+@slash_command(name="d", 
                description="Say something to someone or a group!")
 @slash_option(
     name="text",
@@ -160,6 +169,11 @@ async def profile(ctx: SlashContext, name: str, avi):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
+    banned = open('banned_names.json')
+    banned_names = json.load(banned)
+    if name in banned_names:
+        await ctx.send("Sorry, you cannot name your profile this, please choose another name!")
+        return
     if not "main" in data["chat"]["channel"]:
         po = interactions.PermissionOverwrite(id=ctx.guild.id, type=0)
         po.add_denies(interactions.Permissions.SEND_MESSAGES)
@@ -234,6 +248,11 @@ async def name_change(ctx: SlashContext, name: str):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
+    banned = open('banned_names.json')
+    banned_names = json.load(banned)
+    if name in banned_names:
+        await ctx.send("Sorry, you cannot name your profile this, please choose another name!")
+        return
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
         description="You do not have a user profile! Use /create_profile to make one!",
@@ -250,11 +269,16 @@ async def name_change(ctx: SlashContext, name: str):
         color=Color.from_hex(data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["color"]))
         await ctx.send(embeds=embed)
     else:  
-        data["individuals"][str(ctx.author.id)]["name"] = name
-        data["chat"]["individual"][name] = data["chat"]["individual"][str(ctx.author.id)]
-        del data["chat"]["individual"][str(ctx.author.id)]
-        data["profiles"][name] = data["profiles"][str(ctx.author.id)]
-        del data["profiles"][str(ctx.author.id)]
+        old_name = data["individuals"][str(ctx.author.id)]["name"]
+        data["chat"]["individual"][name] = data["chat"]["individual"][old_name]
+        del data["chat"]["individual"][old_name]
+        data["individuals"][str(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["id"])]["name"] = name
+        data["profiles"][name] = data["profiles"][old_name]
+        del data["profiles"][old_name]
+        for group in data["chat"]["group"]:
+            if data["individuals"][str(ctx.author.id)]["name"] in data["chat"]["group"][group]["members"]:
+                data["chat"]["group"][group]["members"][data["chat"]["group"][group]["members"].index(data["individuals"][str(ctx.author.id)]["name"])] = name
+        del data["chat"]["individual"][data["individuals"][str(ctx.author.id)]["name"]]
         json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Your name has been changed!")
 
@@ -465,7 +489,12 @@ async def admin_name_change(ctx: SlashContext, name: str, person: str):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
-    if not person in data["individuals"]:
+    banned = open('banned_names.json')
+    banned_names = json.load(banned)
+    if name in banned_names:
+        await ctx.send("Sorry, you cannot name your profile this, please choose another name!")
+        return
+    if not person in data["profiles"]:
         embed = interactions.Embed(
         description="This profile does not exist!",
         color=0x7CB7D3)
@@ -481,11 +510,14 @@ async def admin_name_change(ctx: SlashContext, name: str, person: str):
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:  
-        data["individuals"][person]["name"] = name
         data["chat"]["individual"][name] = data["chat"]["individual"][person]
         del data["chat"]["individual"][person]
+        data["individuals"][str(data["profiles"][person]["id"])]["name"] = name
         data["profiles"][name] = data["profiles"][person]
         del data["profiles"][person]
+        for group in data["chat"]["group"]:
+            if person in data["chat"]["group"][group]["members"]:
+                data["chat"]["group"][group]["members"][data["chat"]["group"][group]["members"].index(person)] = name
         json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("This individuals profile name has been changed!") 
 
