@@ -13,7 +13,10 @@ def open_file(guild):
             "individuals": {},
             "profiles": {},
             "settings": {
-                "journal": False
+                "journal": False,
+                "dm_ping": False,
+                "name_change": True,
+                "image_change": True
             },
         }
         return full_data, data

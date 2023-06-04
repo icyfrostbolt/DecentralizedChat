@@ -50,7 +50,7 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main", ping=None):
         await ctx.send(embeds=embed)
     else:
         if ping:
-            text = f"{text}\n\n@{ping}"
+            new_text = f"{text}\n\n@{ping}"
         send_channel = bot.get_channel(data["chat"]["channel"][chat]["id"])
         embed = interactions.Embed(
         description=text,
@@ -68,11 +68,50 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main", ping=None):
                 json_methods.update_file(data, ctx.guild_id, full_data)
             if not data["profiles"][person]["id"] == ctx.author.id:
                 thread = bot.get_channel(data["profiles"][person]["threads"][chat])
-                sent_thread = await thread.send(embeds=embed)
                 if ping and (ping == person or ping == "everyone"):
-                    await sent_thread.reply("<@" + str(data["profiles"][person]["id"]) + ">")
+                    text = "**" + data["individuals"][str(ctx.author.id)]["name"] + f"**\n\n{text}\n\n<@" + str(data["profiles"][person]["id"]) + ">"
+                    await thread.send(text)
+                else:
+                    await thread.send(embeds=embed)
         await send_channel.send(embeds=embed)
         await ctx.send(embeds=embed)
+
+@slash_command(name="p", 
+               description="Ping someone!")
+@slash_option(
+    name="ping",
+    description="Who would you like to ping with this message?",
+    required=True,
+    opt_type=OptionType.STRING
+)
+@slash_option(
+    name="chat",
+    description="What public channel would you like to ping this person in?",
+    required=False,
+    opt_type=OptionType.STRING
+)
+async def ping(ctx: SlashContext, ping: str, chat="main"):
+    data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
+    data = data[0]
+    if not (ping in data["profiles"] or ping == "everyone"):
+        await ctx.send("You did not select a valid person to ping! Try again!")
+        return
+    if ping == "everyone":
+        for person in data["profiles"]:
+            private_channel = bot.get_channel(data["profiles"][person]["hub"])
+            if not chat in data["profiles"][person]["threads"]:
+                new_thread = await private_channel.create_thread(name=chat, auto_archive_duration=10080)
+                if data["profiles"][person]["id"] == ctx.author.id:
+                    await new_thread.send("<@" + str(data["profiles"][person]["id"]) + ">")
+                data["profiles"][person]["threads"][chat] = new_thread.id
+                json_methods.update_file(data, ctx.guild_id, full_data)
+            if not data["profiles"][person]["id"] == ctx.author.id:
+                thread = bot.get_channel(data["profiles"][person]["threads"][chat])
+                await thread.send(embeds="<@" + str(data["profiles"][person]["id"]) + ">")
+    else:
+        thread = bot.get_channel(data["profiles"][ping]["threads"][chat.lower()])
+        await thread.send("<@" + str(data["profiles"][ping]["name"]["id"]) + ">")
 
 @slash_command(name="d", 
                description="Say something to someone or a group!")
@@ -109,7 +148,11 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                 data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()] = self_thread.id
                 json_methods.update_file(data, ctx.guild_id, full_data)
                 thread = bot.get_channel(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()])
-                await thread.send(embeds=embed)
+                if data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["settings"]["dm_ping"]:
+                    text = "**" + data["individuals"][str(ctx.author.id)]["name"] + f"**\n\n{text}\n\n<@" + str(data["profiles"][dm.lower()]["id"]) + ">"
+                    await thread.send(text)
+                else:
+                    await thread.send(embeds=embed)
             for person in data["profiles"]:
                 if person.lower() == dm.lower() and not person.lower() == data["individuals"][str(ctx.author.id)]["name"]:
                     dm_channel = bot.get_channel(data["profiles"][person]["dm"])
@@ -118,7 +161,11 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                         data["profiles"][person]["threads"][dm.lower()] = new_thread.id
                         json_methods.update_file(data, ctx.guild_id, full_data)
                     thread = bot.get_channel(data["profiles"][person]["threads"][dm.lower()])
-                    await thread.send(embeds=embed)
+                    if data["profiles"][data["individuals"][str(data["profiles"][person]["id"])]["name"]]["settings"]["dm_ping"]:
+                        text = "**" + data["individuals"][str(ctx.author.id)]["name"] + f"**\n\n{text}\n\n<@" + str(data["profiles"][dm.lower()]["id"]) + ">"
+                        await thread.send(text)
+                    else:
+                        await thread.send(embeds=embed)
             await ctx.send(embeds=embed)
         elif dm.lower() in data["chat"]["group"]:
             if not data["individuals"][str(ctx.author.id)]["name"] in data["chat"]["group"][dm.lower()]["members"]:
@@ -142,7 +189,11 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                         data["profiles"][person]["threads"][dm.lower()] = new_thread.id
                         json_methods.update_file(data, ctx.guild_id, full_data)
                     thread = bot.get_channel(data["profiles"][person]["threads"][dm.lower()])
-                    await thread.send(embeds=embed)
+                    if data["profiles"][data["individuals"][str(data["profiles"][person]["id"])]["name"]]["settings"]["dm_ping"]:
+                        text = "**" + data["individuals"][str(ctx.author.id)]["name"] + " (" + dm + ")" + f"**\n\n{text}\n\n<@" + str(data["profiles"][person]["id"]) + ">"
+                        await thread.send(text)
+                    else:
+                        await thread.send(embeds=embed)
             await ctx.send(embeds=embed)
         else:
             embed = interactions.Embed(
@@ -210,7 +261,12 @@ async def profile(ctx: SlashContext, name: str, avi):
             "hub": channel.id,
             "dm": dm_channel.id,
             "threads": {},
-            "journal": None
+            "journal": None,
+            "settings": {
+                "dm_ping": data["settings"]["dm_ping"],
+                "name_change": data["settings"]["name_change"],
+                "image_change": data["settings"]["image_change"]
+            }
         }
         if data["settings"]["journal"]:
             journal_channel = await ctx.guild.create_channel(channel_type=0, name=f"{name}-journal", permission_overwrites=[po, pa], category=data["chat"]["channel"]["journal_category"]["id"])
@@ -278,6 +334,10 @@ async def name_change(ctx: SlashContext, name: str):
         for group in data["chat"]["group"]:
             if data["individuals"][str(ctx.author.id)]["name"] in data["chat"]["group"][group]["members"]:
                 data["chat"]["group"][group]["members"][data["chat"]["group"][group]["members"].index(data["individuals"][str(ctx.author.id)]["name"])] = name
+        for profile in data["profiles"]:
+            if old_name in profile["threads"]:
+                data["profiles"]["threads"][name] = ["profiles"]["threads"][old_name]
+                del d["profiles"]["threads"][old_name]
         del data["chat"]["individual"][data["individuals"][str(ctx.author.id)]["name"]]
         json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Your name has been changed!")
