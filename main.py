@@ -33,13 +33,7 @@ async def on_startup():
     required=False,
     opt_type=OptionType.STRING
 )
-@slash_option(
-    name="ping",
-    description="Who would you like to ping with this message?",
-    required=False,
-    opt_type=OptionType.STRING
-)
-async def say(ctx: SlashContext, text: str, image=None, chat="main", ping=None):
+async def say(ctx: SlashContext, text: str, image=None, chat="main"):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
@@ -49,8 +43,6 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main", ping=None):
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
     else:
-        if ping:
-            new_text = f"{text}\n\n@{ping}"
         send_channel = bot.get_channel(data["chat"]["channel"][chat]["id"])
         embed = interactions.Embed(
         description=text,
@@ -68,11 +60,7 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main", ping=None):
                 json_methods.update_file(data, ctx.guild_id, full_data)
             if not data["profiles"][person]["id"] == ctx.author.id:
                 thread = bot.get_channel(data["profiles"][person]["threads"][chat])
-                if ping and (ping == person or ping == "everyone"):
-                    text = "**" + data["individuals"][str(ctx.author.id)]["name"] + f"**\n\n{text}\n\n<@" + str(data["profiles"][person]["id"]) + ">"
-                    await thread.send(text)
-                else:
-                    await thread.send(embeds=embed)
+                await thread.send(embeds=embed)
         await send_channel.send(embeds=embed)
         await ctx.send(embeds=embed)
 
@@ -148,11 +136,10 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                 data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()] = self_thread.id
                 json_methods.update_file(data, ctx.guild_id, full_data)
                 thread = bot.get_channel(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()])
+                sent_message = await thread.send(embeds=embed)
                 if data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["settings"]["dm_ping"]:
-                    text = "**" + data["individuals"][str(ctx.author.id)]["name"] + f"**\n\n{text}\n\n<@" + str(data["profiles"][dm.lower()]["id"]) + ">"
-                    await thread.send(text)
-                else:
-                    await thread.send(embeds=embed)
+                    ghost_ping = await sent_message.reply("<@" + str(data["profiles"][dm.lower()]["id"]) + ">")
+                    await ghost_ping.delete()
             for person in data["profiles"]:
                 if person.lower() == dm.lower() and not person.lower() == data["individuals"][str(ctx.author.id)]["name"]:
                     dm_channel = bot.get_channel(data["profiles"][person]["dm"])
@@ -161,11 +148,10 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                         data["profiles"][person]["threads"][dm.lower()] = new_thread.id
                         json_methods.update_file(data, ctx.guild_id, full_data)
                     thread = bot.get_channel(data["profiles"][person]["threads"][dm.lower()])
-                    if data["profiles"][data["individuals"][str(data["profiles"][person]["id"])]["name"]]["settings"]["dm_ping"]:
-                        text = "**" + data["individuals"][str(ctx.author.id)]["name"] + f"**\n\n{text}\n\n<@" + str(data["profiles"][dm.lower()]["id"]) + ">"
-                        await thread.send(text)
-                    else:
-                        await thread.send(embeds=embed)
+                    sent_message = await thread.send(embeds=embed)
+                    if data["profiles"][person]["settings"]["dm_ping"]:
+                        ghost_ping = await sent_message.reply("<@" + str(data["profiles"][person]["id"]) + ">")
+                        await ghost_ping.delete()
             await ctx.send(embeds=embed)
         elif dm.lower() in data["chat"]["group"]:
             if not data["individuals"][str(ctx.author.id)]["name"] in data["chat"]["group"][dm.lower()]["members"]:
@@ -189,11 +175,10 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                         data["profiles"][person]["threads"][dm.lower()] = new_thread.id
                         json_methods.update_file(data, ctx.guild_id, full_data)
                     thread = bot.get_channel(data["profiles"][person]["threads"][dm.lower()])
-                    if data["profiles"][data["individuals"][str(data["profiles"][person]["id"])]["name"]]["settings"]["dm_ping"]:
-                        text = "**" + data["individuals"][str(ctx.author.id)]["name"] + " (" + dm + ")" + f"**\n\n{text}\n\n<@" + str(data["profiles"][person]["id"]) + ">"
-                        await thread.send(text)
-                    else:
-                        await thread.send(embeds=embed)
+                    sent_message = await thread.send(embeds=embed)
+                    if data["profiles"][person]["settings"]["dm_ping"]:
+                        ghost_ping = await sent_message.reply("<@" + str(data["profiles"][person]["id"]) + ">")
+                        await ghost_ping.delete()
             await ctx.send(embeds=embed)
         else:
             embed = interactions.Embed(
