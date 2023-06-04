@@ -336,8 +336,8 @@ async def name_change(ctx: SlashContext, name: str):
                 data["chat"]["group"][group]["members"][data["chat"]["group"][group]["members"].index(data["individuals"][str(ctx.author.id)]["name"])] = name
         for profile in data["profiles"]:
             if old_name in profile["threads"]:
-                data["profiles"]["threads"][name] = ["profiles"]["threads"][old_name]
-                del d["profiles"]["threads"][old_name]
+                data["profiles"]["threads"][name] = data["profiles"]["threads"][old_name]
+                del data["profiles"]["threads"][old_name]
         del data["chat"]["individual"][data["individuals"][str(ctx.author.id)]["name"]]
         json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Your name has been changed!")
@@ -648,5 +648,28 @@ async def help_menu(ctx: SlashContext, menu="main"):
     description=values[menu.lower()],
     color=0x7CB7D3)
     await ctx.send(embeds=embed)
+
+@slash_command(name="settings", 
+               description="Change your settings!")
+@slash_option(
+    name="setting",
+    description="Which setting would you like to change?",
+    required=False,
+    opt_type=OptionType.STRING
+)
+@slash_option(
+    name="value",
+    description="What would you like to set this setting to?",
+    required=False,
+    opt_type=OptionType.BOOLEAN
+)
+async def change_settings(ctx: SlashContext, setting: str, value: bool):
+    data = json_methods.open_file(ctx.guild_id)
+    data = data[0]
+    if setting in data["profiles"][data["individuals"][str(ctx.author.id)]["name"]["settings"]]:
+        data["profiles"][data["individuals"][str(ctx.author.id)]["name"]["settings"]] = value
+        await ctx.send("This setting has been changed!")
+    else:
+        await ctx.send("This is not a valid setting! PLease try again!")
 
 bot.start(token)
