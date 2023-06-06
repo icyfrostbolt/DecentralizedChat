@@ -16,7 +16,8 @@ def open_file(guild):
                 "journal": False,
                 "dm_ping": False,
                 "name_change": True,
-                "image_change": True
+                "image_change": True,
+                "color_change": True,
             },
         }
         return full_data, data

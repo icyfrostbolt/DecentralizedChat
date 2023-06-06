@@ -250,7 +250,8 @@ async def profile(ctx: SlashContext, name: str, avi):
             "settings": {
                 "dm_ping": data["settings"]["dm_ping"],
                 "name_change": data["settings"]["name_change"],
-                "image_change": data["settings"]["image_change"]
+                "image_change": data["settings"]["image_change"],
+                "color_change": data["settings"]["color_change"],
             }
         }
         if data["settings"]["journal"]:
@@ -293,6 +294,9 @@ async def name_change(ctx: SlashContext, name: str):
     banned_names = json.load(banned)
     if name in banned_names:
         await ctx.send("Sorry, you cannot name your profile this, please choose another name!")
+        return
+    if not data["settings"]["name_change"] or not data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["settings"]["name_change"]:
+        await ctx.send("Sorry, you do not have permission to change your name!")
         return
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
@@ -340,6 +344,9 @@ async def image_change(ctx: SlashContext, avi):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
+    if not data["settings"]["image_change"] or not data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["settings"]["image_change"]:
+        await ctx.send("Sorry, you do not have permission to change your profile's image!")
+        return
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
         description=f"You do not have a user profile! Use /create_profile to make one!",
@@ -490,30 +497,6 @@ async def group_adding(ctx: SlashContext, channel_name: str, person_name: str):
     required=True,
     opt_type=OptionType.BOOLEAN,
 )
-async def toggle_journal(ctx: SlashContext, toggle: bool):
-    data = json_methods.open_file(ctx.guild_id)
-    full_data = data[1]
-    data = data[0]
-    if toggle:
-        if not "journal_category" in data["chat"]["channel"]:
-            category = await ctx.guild.create_channel(channel_type=4, name="journals")
-            data["chat"]["channel"]["journal_category"] = {
-                "id": category.id
-            }
-        data["settings"]["journal"] = True
-        pa = interactions.PermissionOverwrite(id=ctx.author.id, type=1)
-        pa.add_allows(interactions.Permissions.VIEW_CHANNEL)
-        for person in data["profiles"]:
-            if data["profiles"][person.lower()]["journal"] == None:
-                po = interactions.PermissionOverwrite(id=ctx.guild.id, type=0)
-                po.add_denies(interactions.Permissions.VIEW_CHANNEL)
-                journal_channel = await ctx.guild.create_channel(channel_type=0, name=f"{person}-journal", permission_overwrites=[po, pa], category=data["chat"]["channel"]["journal_category"]["id"])
-                data["profiles"][person.lower()]["journal"] = journal_channel.id
-            
-    else:
-        data["settings"]["journal"] = False
-    json_methods.update_file(data, ctx.guild_id, full_data)
-    await ctx.send("Your journal settings have been updated!")
 
 @slash_command(name="admin_change_name", 
                description="Change your name!")
@@ -537,7 +520,7 @@ async def admin_name_change(ctx: SlashContext, name: str, person: str):
     banned = open('banned_names.json')
     banned_names = json.load(banned)
     if name in banned_names:
-        await ctx.send("Sorry, you cannot name your profile this, please choose another name!")
+        await ctx.send("Sorry, you cannot name this profile this name, please choose another name!")
         return
     if not person in data["profiles"]:
         embed = interactions.Embed(
@@ -609,6 +592,9 @@ async def color_change(ctx: SlashContext, hex_code):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
+    if not data["settings"]["color_change"] or not data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["settings"]["color_change"]:
+        await ctx.send("Sorry, you do not have permission to change your profile's color!")
+        return
     try:
         color = Color.from_hex(hex_code)
     except:
@@ -617,6 +603,34 @@ async def color_change(ctx: SlashContext, hex_code):
         data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["color"] = hex_code
         json_methods.update_file(data, int(ctx.guild_id), full_data)
         await ctx.send("Your color has been changed!")
+
+@slash_command(name="admin_change_color", 
+               description="Change an individuals color!")
+@slash_default_member_permission(interactions.Permissions.ADMINISTRATOR)
+@slash_option(
+    name="hex_code",
+    description="Upload a hex code for the color you want!",
+    required=True,
+    opt_type=OptionType.STRING
+)
+@slash_option(
+    name="profile",
+    description="Choose whos color you're changing!",
+    required=True,
+    opt_type=OptionType.STRING
+)
+async def admin_color_change(ctx: SlashContext, hex_code, profile: str):
+    data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
+    data = data[0]
+    try:
+        color = Color.from_hex(hex_code)
+    except:
+        await ctx.send("This is not a valid hex code. Please try again.")
+    else:
+        data["profiles"][data["individuals"][data["profiles"][profile]["name"]]["name"]]["color"] = hex_code
+        json_methods.update_file(data, int(ctx.guild_id), full_data)
+        await ctx.send("This individuals color has been changed!")
 
 @slash_command(name="help", 
                description="Get help!")
@@ -653,6 +667,46 @@ async def change_settings(ctx: SlashContext, setting: str, value: bool):
     data = data[0]
     if setting in data["profiles"][data["individuals"][str(ctx.author.id)]["name"]["settings"]]:
         data["profiles"][data["individuals"][str(ctx.author.id)]["name"]["settings"]] = value
+        await ctx.send("This setting has been changed!")
+    else:
+        await ctx.send("This is not a valid setting! PLease try again!")
+
+@slash_command(name="admin_settings", 
+               description="Change your settings!")
+@slash_default_member_permission(interactions.Permissions.ADMINISTRATOR)
+@slash_option(
+    name="setting",
+    description="Which setting would you like to change?",
+    required=False,
+    opt_type=OptionType.STRING
+)
+@slash_option(
+    name="value",
+    description="What would you like to set this setting to?",
+    required=False,
+    opt_type=OptionType.BOOLEAN
+)
+async def change_admin_settings(ctx: SlashContext, setting: str, value: bool):
+    data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
+    data = data[0]
+    if setting in data["settings"]:
+        if setting == "journal" and value == True:
+            if not "journal_category" in data["chat"]["channel"]:
+                category = await ctx.guild.create_channel(channel_type=4, name="journals")
+                data["chat"]["channel"]["journal_category"] = {
+                    "id": category.id
+                }
+            pa = interactions.PermissionOverwrite(id=ctx.author.id, type=1)
+            pa.add_allows(interactions.Permissions.VIEW_CHANNEL)
+            for person in data["profiles"]:
+                if data["profiles"][person.lower()]["journal"] == None:
+                    po = interactions.PermissionOverwrite(id=ctx.guild.id, type=0)
+                    po.add_denies(interactions.Permissions.VIEW_CHANNEL)
+                    journal_channel = await ctx.guild.create_channel(channel_type=0, name=f"{person}-journal", permission_overwrites=[po, pa], category=data["chat"]["channel"]["journal_category"]["id"])
+                    data["profiles"][person.lower()]["journal"] = journal_channel.id
+        data["settings"][setting] = value
+        json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("This setting has been changed!")
     else:
         await ctx.send("This is not a valid setting! PLease try again!")
