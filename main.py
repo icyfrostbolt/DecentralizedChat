@@ -37,6 +37,9 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main"):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
+    if not data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["settings"]["talk_perms"]:
+        await ctx.send("You sadly do not have talk permissions! If you have any questions, talk to a server admin!")
+        return
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
         description="You do not have a user profile! Use /create_profile to make one!",
@@ -82,6 +85,9 @@ async def ping(ctx: SlashContext, ping: str, chat="main"):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
+    if not data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["settings"]["talk_perms"]:
+        await ctx.send("You sadly do not have talk permissions! If you have any questions, talk to a server admin!")
+        return
     if not (ping in data["profiles"] or ping == "everyone"):
         await ctx.send("You did not select a valid person to ping! Try again!")
         return
@@ -119,6 +125,9 @@ async def dm(ctx: SlashContext, text: str, dm: str):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
+    if not data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["settings"]["talk_perms"]:
+        await ctx.send("You sadly do not have talk permissions! If you have any questions, talk to a server admin!")
+        return
     if not str(ctx.author.id) in data["individuals"]:
         embed = interactions.Embed(
         description="You do not have a user profile! Use /create_profile to make one!",
@@ -252,6 +261,7 @@ async def profile(ctx: SlashContext, name: str, avi):
                 "name_change": data["settings"]["name_change"],
                 "image_change": data["settings"]["image_change"],
                 "color_change": data["settings"]["color_change"],
+                "talk_perms": True,
             }
         }
         if data["settings"]["journal"]:
