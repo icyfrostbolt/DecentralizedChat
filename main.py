@@ -1,17 +1,20 @@
 import os, json_methods, json, random
-from dotenv import load_dotenv
 
-load_dotenv()
-token = os.getenv('DISCORD_TOKEN')
+import requests
+from dotenv import load_dotenv
 
 import interactions
 from interactions import slash_command, SlashContext, OptionType, slash_option, slash_default_member_permission, Color
+
+load_dotenv()
+token = os.getenv('DISCORD_TOKEN')
 
 bot = interactions.Client()
 
 @interactions.listen()
 async def on_startup():
     print("Bot is ready!")
+
 
 @slash_command(name="s", 
                description="Say something out loud.")
@@ -22,7 +25,7 @@ async def on_startup():
     opt_type=OptionType.STRING
 )
 @slash_option(
-    name="image",
+    name="img",
     description="Upload an image to be said out in public!",
     required=False,
     opt_type=OptionType.ATTACHMENT
@@ -33,7 +36,7 @@ async def on_startup():
     required=False,
     opt_type=OptionType.STRING
 )
-async def say(ctx: SlashContext, text: str, image=None, chat="main"):
+async def say(ctx: SlashContext, text: str, img=None, chat="main"):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
@@ -50,22 +53,26 @@ async def say(ctx: SlashContext, text: str, image=None, chat="main"):
         embed = interactions.Embed(
         description=text,
         color=Color.from_hex(data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["color"]))
-        embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"], icon_url=data["individuals"][str(ctx.author.id)]["image"])
-        if image:
-            embed.set_image(image.url)
+        image = interactions.File(file=f"images/{data['individuals'][str(ctx.author.id)]['image']}",
+                                  file_name="image.png")
+        embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"],
+                         icon_url=f"attachment://image.png")
+        if img:
+            embed.set_image(img.url)
         for person in data["profiles"]:
             private_channel = bot.get_channel(data["profiles"][person]["hub"])
             if not chat in data["profiles"][person]["threads"]:
-                new_thread = await private_channel.create_thread(name=chat, auto_archive_duration=10080)
+                new_thread = await private_channel. create_thread(name=chat, auto_archive_duration=10080)
                 if data["profiles"][person]["id"] == ctx.author.id:
-                    await new_thread.send(embeds=embed)
+                    await new_thread.send(embeds=embed, files=image)
                 data["profiles"][person]["threads"][chat] = new_thread.id
                 json_methods.update_file(data, ctx.guild_id, full_data)
             if not data["profiles"][person]["id"] == ctx.author.id:
                 thread = bot.get_channel(data["profiles"][person]["threads"][chat])
-                await thread.send(embeds=embed)
-        await send_channel.send(embeds=embed)
-        await ctx.send(embeds=embed)
+                await thread.send(embeds=embed, files=image)
+        await send_channel.send(embeds=embed, files=image)
+        await ctx.send(embeds=embed, files=image)
+
 
 @slash_command(name="p", 
                description="Ping someone!")
@@ -107,6 +114,7 @@ async def ping(ctx: SlashContext, ping: str, chat="main"):
         thread = bot.get_channel(data["profiles"][ping]["threads"][chat.lower()])
         await thread.send("<@" + str(data["profiles"][ping]["name"]["id"]) + ">")
 
+
 @slash_command(name="d", 
                description="Say something to someone or a group!")
 @slash_option(
@@ -138,7 +146,9 @@ async def dm(ctx: SlashContext, text: str, dm: str):
         description=text,
         color=Color.from_hex(data["profiles"][data["individuals"][str(ctx.author.id)]["name"].lower()]["color"]))
         if dm.lower() in data["chat"]["individual"]:
-            embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"], icon_url=data["individuals"][str(ctx.author.id)]["image"])
+            image = interactions.File(f"images/{data['individuals'][str(ctx.author.id)]['image']}")
+            embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"],
+                             icon_url=f"attachment://image.png")
             if not dm.lower() in data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"]:
                 self_channel = bot.get_channel(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["dm"])
                 self_thread = await self_channel.create_thread(name=dm, auto_archive_duration=10080)
@@ -157,16 +167,18 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                         data["profiles"][person]["threads"][dm.lower()] = new_thread.id
                         json_methods.update_file(data, ctx.guild_id, full_data)
                     thread = bot.get_channel(data["profiles"][person]["threads"][dm.lower()])
-                    sent_message = await thread.send(embeds=embed)
+                    sent_message = await thread.send(embeds=embed, files=image)
                     if data["profiles"][person]["settings"]["dm_ping"]:
                         ghost_ping = await sent_message.reply("<@" + str(data["profiles"][person]["id"]) + ">")
                         await ghost_ping.delete()
-            await ctx.send(embeds=embed)
+            await ctx.send(embeds=embed, files=image)
         elif dm.lower() in data["chat"]["group"]:
             if not data["individuals"][str(ctx.author.id)]["name"] in data["chat"]["group"][dm.lower()]["members"]:
                 await ctx.send("You're not in this group!")
                 return
-            embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"] + " (" + dm + ")", icon_url=data["individuals"][str(ctx.author.id)]["image"])
+            image = interactions.File(f"images/{data['individuals'][str(ctx.author.id)]['image']}")
+            embed.set_author(name=data["individuals"][str(ctx.author.id)]["name"],
+                             icon_url=f"attachment://image.png")
             if data["chat"]["group"][dm.lower()]["image"]:
                 embed.set_thumbnail(data["chat"]["group"][dm.lower()]["image"])
             if not dm.lower() in data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"]:
@@ -175,7 +187,7 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                 data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()] = self_thread.id
                 json_methods.update_file(data, ctx.guild_id, full_data)
                 thread = bot.get_channel(data["profiles"][data["individuals"][str(ctx.author.id)]["name"]]["threads"][dm.lower()])
-                await thread.send(embeds=embed)
+                await thread.send(embeds=embed, files=image)
             for person in data["profiles"]:
                 if person.lower() in data["chat"]["group"][dm.lower()]["members"] and not person.lower() == data["individuals"][str(ctx.author.id)]["name"]:
                     if not dm.lower() in data["profiles"][person]["threads"]:
@@ -184,11 +196,11 @@ async def dm(ctx: SlashContext, text: str, dm: str):
                         data["profiles"][person]["threads"][dm.lower()] = new_thread.id
                         json_methods.update_file(data, ctx.guild_id, full_data)
                     thread = bot.get_channel(data["profiles"][person]["threads"][dm.lower()])
-                    sent_message = await thread.send(embeds=embed)
+                    sent_message = await thread.send(embeds=embed, files=image)
                     if data["profiles"][person]["settings"]["dm_ping"]:
                         ghost_ping = await sent_message.reply("<@" + str(data["profiles"][person]["id"]) + ">")
                         await ghost_ping.delete()
-            await ctx.send(embeds=embed)
+            await ctx.send(embeds=embed, files=image)
         else:
             embed = interactions.Embed(
             description="This chat does not exist!",
@@ -207,10 +219,10 @@ async def dm(ctx: SlashContext, text: str, dm: str):
 @slash_option(
     name="avi",
     description="Upload an image for your avatar!",
-    required=True,
+    required=False,
     opt_type=OptionType.ATTACHMENT
 )
-async def profile(ctx: SlashContext, name: str, avi):
+async def profile(ctx: SlashContext, name: str, avi=None):
     data = json_methods.open_file(ctx.guild_id)
     full_data = data[1]
     data = data[0]
@@ -234,10 +246,21 @@ async def profile(ctx: SlashContext, name: str, avi):
     if not str(ctx.author.id) in data["individuals"] and not name.lower() in data["profiles"] and not name.lower() in data["chat"]["group"]:
         file = open('colors.json')
         values = json.load(file)
-        data["individuals"][ctx.author.id] = {
-            "name": name,
-            "image": avi.url
-        }
+
+        if avi:
+            image = requests.get(avi.url).content
+            with open(f"images/{ctx.guild.id}a{ctx.author.id}.jpg", "wb") as handler:
+                handler.write(image)
+
+            data["individuals"][ctx.author.id] = {
+                "name": name,
+                "image": f"{ctx.guild.id}a{ctx.author.id}.jpg"
+            }
+        else:
+            data["individuals"][ctx.author.id] = {
+                "name": name,
+                "image": f"default.png"
+            }
         po = interactions.PermissionOverwrite(id=ctx.guild.id, type=0)
         po.add_denies(interactions.Permissions.VIEW_CHANNEL)
         pa = interactions.PermissionOverwrite(id=ctx.author.id, type=1)
@@ -270,13 +293,14 @@ async def profile(ctx: SlashContext, name: str, avi):
         data["chat"]["individual"][name.lower()] = {
             "dm": dm_channel.id
         }
+        print(ctx.guild_id)
         json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("Your profile has been created!")
     else:
         if str(ctx.author.id) in data["individuals"]:  
             embed = interactions.Embed(
             description="You already have a user profile!",
-            color=Color.from_hex(data["profiles"][name.lower()]["color"]))
+            color=Color.from_hex(data["profiles"][data]["color"]))
         elif name.lower() in data["profiles"]:
             embed = interactions.Embed(
             description="This name is already taken! Please choose another name.",
@@ -362,8 +386,11 @@ async def image_change(ctx: SlashContext, avi):
         description=f"You do not have a user profile! Use /create_profile to make one!",
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
-    else:  
-        data["individuals"][str(ctx.author.id)]["image"] = avi.url
+    else:
+        image = requests.get(avi.url).content
+        with open(f"images/{ctx.guild.id}a{ctx.author.id}.jpg", "wb") as handler:
+            handler.write(image)
+        data["individuals"][str(ctx.author.id)]["image"] = f"{ctx.guild.id}a{ctx.author.id}.jpg"
         json_methods.update_file(data, int(ctx.guild_id), full_data)
         await ctx.send("Your profiles picture has been changed!")
 
@@ -498,6 +525,7 @@ async def group_adding(ctx: SlashContext, channel_name: str, person_name: str):
         json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("This member has been added to your group!")
 
+
 @slash_command(name="toggle_journal", 
                description="Toggle your preference for the journal setting!")
 @slash_default_member_permission(interactions.Permissions.ADMINISTRATOR)
@@ -507,6 +535,32 @@ async def group_adding(ctx: SlashContext, channel_name: str, person_name: str):
     required=True,
     opt_type=OptionType.BOOLEAN,
 )
+async def toggle_journal(ctx: SlashContext):
+    data = json_methods.open_file(ctx.guild_id)
+    full_data = data[1]
+    data = data[0]
+    if data["settings"]["journal"]:
+        if not "journal_category" in data["chat"]["channel"]:
+            category = await ctx.guild.create_channel(channel_type=4, name="journals")
+            data["chat"]["channel"]["journal_category"] = {
+                "id": category.id
+            }
+        pa = interactions.PermissionOverwrite(id=ctx.author.id, type=1)
+        pa.add_allows(interactions.Permissions.VIEW_CHANNEL)
+        for person in data["profiles"]:
+            if data["profiles"][person.lower()]["journal"] is None:
+                po = interactions.PermissionOverwrite(id=ctx.guild.id, type=0)
+                po.add_denies(interactions.Permissions.VIEW_CHANNEL)
+                journal_channel = await ctx.guild.create_channel(channel_type=0, name=f"{person}-journal",
+                                                                 permission_overwrites=[po, pa], category=
+                                                                 data["chat"]["channel"]["journal_category"]["id"])
+                data["profiles"][person.lower()]["journal"] = journal_channel.id
+        data["settings"]["journal"] = True
+    else:
+        data["settings"]["journal"] = False
+    json_methods.update_file(data, ctx.guild_id, full_data)
+    await ctx.send("This setting has been changed!")
+
 
 @slash_command(name="admin_change_name", 
                description="Change your name!")
@@ -584,9 +638,11 @@ async def admin_image_change(ctx: SlashContext, avi, person: str):
         description=f"This profile does not exist!",
         color=0x7CB7D3)
         await ctx.send(embeds=embed)
-    else:  
-        data["individuals"][person]["image"] = avi
-        json_methods.update_file(data, int(ctx.guild_id), full_data)
+    else:
+        image = requests.get(avi.url).content
+        with open(f"images/{ctx.guild.id}a{ctx.author.id}.jpg", "wb") as handler:
+            handler.write(image)
+        data["individuals"][str(ctx.author.id)]["image"] = f"{ctx.guild.id}a{ctx.author.id}.jpg"
         await ctx.send("This individuals profile image has been changed!")
 
 @slash_command(name="change_color", 
@@ -719,6 +775,6 @@ async def change_admin_settings(ctx: SlashContext, setting: str, value: bool):
         json_methods.update_file(data, ctx.guild_id, full_data)
         await ctx.send("This setting has been changed!")
     else:
-        await ctx.send("This is not a valid setting! PLease try again!")
+        await ctx.send("This is not a valid setting! Please try again!")
 
 bot.start(token)
