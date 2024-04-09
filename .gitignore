@@ -1,5 +1,6 @@
 .env
 .idea
-data.json
+.json
 .DS_Store
 __pycache__
+\images
